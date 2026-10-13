@@ -1,5 +1,7 @@
 # MoonHub Studio Bridge
 
+![CI](https://github.com/js-bro-s/moonhub-studio-bridge/actions/workflows/ci.yml/badge.svg)
+
 Move Roblox `KeyframeSequence` saves between Roblox Studio and MoonHub. Publish selected animation poses to get a shareable `MH-####` code. Import public codes back into Studio as editable keyframes.
 
 ## Install
@@ -22,3 +24,7 @@ Imports of public animation codes do not require an API key. The plugin saves yo
 ## Source
 
 Review [`MoonHubBridge.plugin.lua`](MoonHubBridge.plugin.lua) before installing. The plugin transfers keyframe pose data; it does not recreate private Moon Animator editor metadata or asset-specific rig setup.
+
+## Checks
+
+GitHub Actions runs source-contract tests, Selene lint, and Jekyll docs builds on pushes and pull requests. Run plugin contract tests locally with `node --test tests/*.test.cjs`.
