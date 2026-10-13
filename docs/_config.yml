@@ -1,0 +1,12 @@
+title: MoonHub Studio Bridge
+description: Install, configure, and use MoonHub bridge plugin for Roblox Studio.
+url: https://js-bro-s.github.io
+baseurl: /moonhub-studio-bridge
+theme: minima
+header_pages:
+  - installation.md
+  - usage.md
+  - troubleshooting.md
+markdown: kramdown
+plugins:
+  - jekyll-feed

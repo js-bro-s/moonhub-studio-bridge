@@ -1,0 +1,88 @@
+---
+---
+
+@import "minima";
+
+:root {
+  color-scheme: dark;
+  --moonhub-bg: #171614;
+  --moonhub-surface: #211f1c;
+  --moonhub-surface-raised: #292722;
+  --moonhub-ink: #eeeae0;
+  --moonhub-muted: #b2ada3;
+  --moonhub-line: #403d36;
+  --moonhub-orange: #f0804e;
+}
+
+html,
+body {
+  background: var(--moonhub-bg);
+  color: var(--moonhub-ink);
+}
+
+.site-header,
+.site-footer {
+  background: var(--moonhub-bg);
+  border-color: var(--moonhub-line);
+}
+
+.site-title,
+.site-nav .page-link,
+.site-footer,
+.post-meta,
+.rss-subscribe {
+  color: var(--moonhub-muted);
+}
+
+.site-title:hover,
+.site-nav .page-link:hover,
+a,
+a:visited,
+.post-link {
+  color: var(--moonhub-orange);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+strong,
+b {
+  color: var(--moonhub-ink);
+}
+
+p,
+li,
+dd,
+dt,
+blockquote {
+  color: var(--moonhub-muted);
+}
+
+pre,
+code,
+.highlight,
+.highlighter-rouge {
+  background: var(--moonhub-surface-raised);
+  color: var(--moonhub-ink);
+  border-color: var(--moonhub-line);
+}
+
+blockquote,
+table,
+td,
+th,
+hr {
+  border-color: var(--moonhub-line);
+}
+
+table tr:nth-child(even) {
+  background: var(--moonhub-surface);
+}
+
+::selection {
+  background: #f0804e66;
+  color: #fff8ef;
+}
