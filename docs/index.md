@@ -4,7 +4,7 @@ title: MoonHub Studio Bridge
 permalink: /
 ---
 
-Move Roblox `KeyframeSequence` saves between Studio and MoonHub. Publish selected animation poses to get a shareable `MH-####` code. Import public codes back into Studio as editable keyframes.
+Browse public MoonHub animations in Roblox Studio, import them as editable keyframes, and upload selected `KeyframeSequence` saves to get shareable `MH-####` codes.
 
 [Install the plugin]({{ '/installation/' | relative_url }}) · [Read usage guide]({{ '/usage/' | relative_url }}) · [Troubleshoot]({{ '/troubleshooting/' | relative_url }})
 
@@ -19,11 +19,11 @@ Imports create a new `KeyframeSequence` under `ServerStorage.MoonAnimator2Saves`
 ## Requirements
 
 - Roblox Studio desktop app.
-- MoonHub account and creator API key for uploads.
-- HTTP requests enabled in place settings for upload and import.
+- HTTP requests enabled in place settings for browsing, upload, and import.
+- MoonHub creator API key for uploads only.
 
-Import codes use public animation data. API key needed only for export. Keep key private; revoke from [MoonHub dashboard](https://moonhub.dev/dashboard) if exposed.
+Browse and import use public animation data. Keep upload key private; revoke it from [MoonHub dashboard](https://moonhub.dev/dashboard) if exposed.
 
 ## Source
 
-Plugin source lives in [`MoonHubBridge.plugin.lua`](https://github.com/js-bro-s/moonhub-studio-bridge/blob/main/MoonHubBridge.plugin.lua). Read source before installing. Plugin sends selected keyframe data to `https://moonhub.dev/api/upload` and fetches public data from `https://moonhub.dev/api/anim/:code`.
+Plugin source lives in [`MoonHubBridge.plugin.lua`](https://github.com/js-bro-s/moonhub-studio-bridge/blob/main/MoonHubBridge.plugin.lua). Read source before installing. Plugin browses `https://moonhub.dev/api/animations`, fetches full tracks from `https://moonhub.dev/api/anim/:code`, and sends selected keyframe data to `https://moonhub.dev/api/upload`.

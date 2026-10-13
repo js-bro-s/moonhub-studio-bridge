@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/js-bro-s/moonhub-studio-bridge/actions/workflows/ci.yml/badge.svg)
 
-Move Roblox `KeyframeSequence` saves between Roblox Studio and MoonHub. Publish selected animation poses to get a shareable `MH-####` code. Import public codes back into Studio as editable keyframes.
+Browse the public MoonHub library from Roblox Studio, import animations as editable `KeyframeSequence` saves, and upload selected Studio poses to get shareable `MH-####` codes.
 
 ## Install
 

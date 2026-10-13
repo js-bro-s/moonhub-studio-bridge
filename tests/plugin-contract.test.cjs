@@ -12,9 +12,17 @@ test('plugin uploads animation payloads with bearer authentication', () => {
 });
 
 test('plugin imports public animation codes from the documented API route', () => {
-  assert.match(plugin, /Url = API_BASE \.\. "\/anim\/" \.\. code, Method = "GET"/);
+  assert.match(plugin, /Url = API_BASE \.\. "\/anim\/" \.\. normalized, Method = "GET"/);
   assert.match(plugin, /animation\.payload_json/);
   assert.match(plugin, /animation\.fps or 60/);
+});
+
+test('plugin browses a compact, searchable library and imports result cards', () => {
+  assert.match(plugin, /\/animations\?view=summary&limit=20/);
+  assert.match(plugin, /HttpService:UrlEncode\(query\)/);
+  assert.match(plugin, /HttpService:UrlEncode\(chosenCategory\)/);
+  assert.match(plugin, /IMPORT/);
+  assert.match(plugin, /importByCode\(animation\.short_code, animation\.title\)/);
 });
 
 test('plugin restores editable keyframes and selects imported sequence', () => {

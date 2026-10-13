@@ -22,7 +22,9 @@ Roblox Studio installs script-based plugins through **Save as Local Plugin**:
 
 If **Save as Local Plugin** is missing, verify temporary object is a `Script` and selected in Explorer. Roblox Creator Hub has [official local plugin steps](https://create.roblox.com/docs/studio/plugins#save-plugin-script).
 
-## 3. Create and enter API key
+## 3. Optional: add an upload API key
+
+Browsing and importing public animations need no API key. Follow these steps only when you want to upload saves.
 
 1. Sign in at [moonhub.dev/dashboard](https://moonhub.dev/dashboard).
 2. Create API key. Copy it while shown; MoonHub stores only its hash.
