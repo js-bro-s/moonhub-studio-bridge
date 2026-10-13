@@ -27,7 +27,7 @@ jobs:
       - name: Run plugin contract tests
         run: node --test tests/*.test.cjs
       - name: Install Selene
-        run: cargo install selene --locked --version 0.32.0
+        run: cargo install selene --locked --version 0.31.0
       - name: Lint Roblox plugin
         run: selene --allow-warnings MoonHubBridge.plugin.lua
 
