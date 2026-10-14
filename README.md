@@ -6,8 +6,8 @@ Browse the public MoonHub library from Roblox Studio, import animations as edita
 
 ## Install
 
-1. [Download the plugin script](https://github.com/js-bro-s/moonhub-studio-bridge/raw/refs/heads/main/MoonHubBridge.plugin.lua).
-2. Follow the [Studio installation guide](https://js-bro-s.github.io/moonhub-studio-bridge/installation/).
+1. Get the plugin from [moonhub.dev/studio](https://moonhub.dev/studio): use the download button, or run the one-line install command for macOS or Windows.
+2. Restart Studio. **MoonHub** appears on the Plugins tab. See the [Studio installation guide](https://js-bro-s.github.io/moonhub-studio-bridge/installation/) for details.
 
 ## Developer docs
 
