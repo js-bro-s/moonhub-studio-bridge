@@ -26,4 +26,4 @@ Browse and import use public animation data. Keep upload key private; revoke it 
 
 ## Source
 
-Plugin source lives in [`MoonHubBridge.plugin.lua`](https://github.com/js-bro-s/moonhub-studio-bridge/blob/main/MoonHubBridge.plugin.lua). Read source before installing. Plugin browses `https://moonhub.dev/api/animations`, fetches full tracks from `https://moonhub.dev/api/anim/:code`, and sends selected keyframe data to `https://moonhub.dev/api/upload`.
+Plugin source lives in the [MoonHub repository](https://github.com/js-bro-s/moonhub.dev/blob/main/public/MoonHubBridge.plugin.lua) and is served at [moonhub.dev/MoonHubBridge.plugin.lua](https://moonhub.dev/MoonHubBridge.plugin.lua). Read source before installing. Plugin browses `https://moonhub.dev/api/animations`, fetches full tracks from `https://moonhub.dev/api/anim/:code`, and sends selected keyframe data to `https://moonhub.dev/api/upload`.

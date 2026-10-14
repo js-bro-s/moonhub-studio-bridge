@@ -4,23 +4,29 @@ title: Install
 permalink: /installation/
 ---
 
-## 1. Download plugin source
+## 1. Install the plugin
 
-[Download MoonHubBridge.plugin.lua](https://github.com/js-bro-s/moonhub-studio-bridge/raw/refs/heads/main/MoonHubBridge.plugin.lua). Save file on your computer.
+Fastest: run one command. It downloads the plugin and puts it straight into Studio's plugins folder.
 
-## 2. Save as local Studio plugin
+**macOS** (Terminal):
 
-Roblox Studio installs script-based plugins through **Save as Local Plugin**:
+```bash
+mkdir -p ~/Documents/Roblox/Plugins && curl -fsSL https://moonhub.dev/MoonHubBridge.plugin.lua -o ~/Documents/Roblox/Plugins/MoonHubBridge.plugin.lua
+```
 
-1. Open Roblox Studio and a place.
-2. In Explorer, create a temporary `Script` under `ServerStorage`.
-3. Open downloaded `.plugin.lua` file in a text editor. Copy all source and paste into temporary Script.
-4. Select temporary Script. Open **Plugins** tab and choose **Save as Local Plugin**.
-5. Confirm **Save**. Studio adds plugin to local plugins and starts it.
-6. Delete temporary Script from `ServerStorage`; keep installed plugin.
-7. Find **MoonHub** button in **Plugins** toolbar.
+**Windows** (PowerShell):
 
-If **Save as Local Plugin** is missing, verify temporary object is a `Script` and selected in Explorer. Roblox Creator Hub has [official local plugin steps](https://create.roblox.com/docs/studio/plugins#save-plugin-script).
+```powershell
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Roblox\Plugins" | Out-Null; Invoke-WebRequest https://moonhub.dev/MoonHubBridge.plugin.lua -OutFile "$env:LOCALAPPDATA\Roblox\Plugins\MoonHubBridge.plugin.lua"
+```
+
+Prefer a button? [Download MoonHubBridge.plugin.lua](https://moonhub.dev/MoonHubBridge.plugin.lua) and save it into the same folder (`~/Documents/Roblox/Plugins` on macOS, `%LOCALAPPDATA%\Roblox\Plugins` on Windows). The same buttons and commands are on [moonhub.dev/studio](https://moonhub.dev/studio).
+
+## 2. Restart Studio
+
+Close and reopen Roblox Studio. Find the **MoonHub** button on the **Plugins** tab. Studio loads every plugin file in that folder when it starts.
+
+If you cannot write to the plugins folder, use **Save as Local Plugin** instead: put the source in a temporary `Script` under `ServerStorage`, select it, choose **Plugins → Save as Local Plugin**, then delete the temporary Script. Roblox Creator Hub has [official local plugin steps](https://create.roblox.com/docs/studio/plugins#save-plugin-script).
 
 ## 3. Optional: add an upload API key
 
@@ -41,4 +47,4 @@ On Studio versions with a different menu layout, open **Game Settings → Securi
 
 ## Remove or update plugin
 
-Open **Plugins → Manage Plugins** and disable or remove MoonHub bridge. To update, download current source and repeat local plugin installation; remove older MoonHub copy first if both toolbar buttons appear.
+Open **Plugins → Manage Plugins** and disable or remove MoonHub bridge. To update, run the install command again and restart Studio; it replaces the old file. Remove any older MoonHub copy installed through **Save as Local Plugin** first if both toolbar buttons appear.
