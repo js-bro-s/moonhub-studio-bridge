@@ -25,6 +25,10 @@ Imports of public animation codes do not require an API key. The plugin saves yo
 
 Review [`MoonHubBridge.plugin.lua`](MoonHubBridge.plugin.lua) before installing. The plugin transfers keyframe pose data; it does not recreate private Moon Animator editor metadata or asset-specific rig setup.
 
+## Development
+
+Source lives in `src/` as modules. `scripts/build.cjs` bundles them into the single `MoonHubBridge.plugin.lua` that users download. Edit `src/`, run `node scripts/build.cjs`, and commit both. CI fails if the bundle is stale.
+
 ## Checks
 
-GitHub Actions runs source-contract tests, Selene lint, and Jekyll docs builds on pushes and pull requests. Run plugin contract tests locally with `node --test tests/*.test.cjs`.
+GitHub Actions runs source-contract tests (including a bundle freshness check), Selene lint, and Jekyll docs builds on pushes and pull requests. Run plugin contract tests locally with `node --test tests/*.test.cjs`.

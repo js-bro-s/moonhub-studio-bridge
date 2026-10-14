@@ -18,11 +18,12 @@ test('plugin imports public animation codes from the documented API route', () =
 });
 
 test('plugin browses a compact, searchable library and imports result cards', () => {
-  assert.match(plugin, /\/animations\?view=summary&limit=20/);
+  assert.match(plugin, /\/animations\?view=summary&limit=" \.\. limit/);
+  assert.match(plugin, /"&offset=" \.\. offset/);
   assert.match(plugin, /HttpService:UrlEncode\(query\)/);
-  assert.match(plugin, /HttpService:UrlEncode\(chosenCategory\)/);
-  assert.match(plugin, /IMPORT/);
-  assert.match(plugin, /importByCode\(animation\.short_code, animation\.title\)/);
+  assert.match(plugin, /HttpService:UrlEncode\(category\)/);
+  assert.match(plugin, /IMPORT TO SERVERSTORAGE/);
+  assert.match(plugin, /Actions\.importByCode\(animation\.short_code, animation\.title\)/);
 });
 
 test('plugin restores editable keyframes and selects imported sequence', () => {
@@ -31,6 +32,16 @@ test('plugin restores editable keyframes and selects imported sequence', () => {
   assert.match(plugin, /Instance\.new\("Pose"\)/);
   assert.match(plugin, /ServerStorage:FindFirstChild\("MoonAnimator2Saves"\)/);
   assert.match(plugin, /Selection:Set\(\{sequence\}\)/);
+});
+
+test('plugin validates API keys against the documented /me route', () => {
+  assert.match(plugin, /Url = API_BASE \.\. "\/me", Method = "GET"/);
+  assert.match(plugin, /response\.StatusCode == 401/);
+});
+
+test('bundled plugin matches src modules', () => {
+  const { execFileSync } = require('node:child_process');
+  execFileSync(process.execPath, [join(__dirname, '..', 'scripts', 'build.cjs'), '--check']);
 });
 
 test('plugin source contains no embedded live API key', () => {

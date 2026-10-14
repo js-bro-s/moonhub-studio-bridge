@@ -1,415 +1,900 @@
 -- MoonHub Studio bridge. Allow HTTP requests in Studio settings before use.
-local HttpService = game:GetService("HttpService")
-local Selection = game:GetService("Selection")
-local ServerStorage = game:GetService("ServerStorage")
-
-local API_BASE = "https://moonhub.dev/api"
-local CATEGORIES = {"FPS Viewmodel", "Melee & Combat", "Locomotion", "Emote", "Cinematic"}
-local RIGS = {"R6", "R15", "FPS Arms", "Custom"}
-local toolbar = plugin:CreateToolbar("MoonHub")
-local toggle = toolbar:CreateButton("MoonHub", "Browse animations and upload Studio saves", "rbxassetid://6031075931")
-toggle.ClickableWhenViewportHidden = true
-local widgetInfo = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, false, 420, 620, 360, 460)
-local widget = plugin:CreateDockWidgetPluginGui("MoonHubBridge_v1", widgetInfo)
-widget.Title = "MoonHub · Library & upload"
-widget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-toggle.Click:Connect(function() widget.Enabled = not widget.Enabled end)
-
-local function getSetting(name, fallback)
-    local value = plugin:GetSetting("MoonHub_" .. name)
-    return value ~= nil and value or fallback
-end
-local function setSetting(name, value)
-    plugin:SetSetting("MoonHub_" .. name, value)
-end
-
-local root = Instance.new("Frame")
-root.Name = "Root"
-root.Size = UDim2.fromScale(1, 1)
-root.BackgroundColor3 = Color3.fromRGB(25, 27, 31)
-root.BorderSizePixel = 0
-root.Parent = widget
-
-local function label(parent, text, height, color)
-    local item = Instance.new("TextLabel")
-    item.BackgroundTransparency = 1; item.Size = UDim2.new(1, 0, 0, height or 22)
-    item.Font = Enum.Font.GothamMedium; item.TextSize = 13; item.TextXAlignment = Enum.TextXAlignment.Left
-    item.TextColor3 = color or Color3.fromRGB(224, 224, 219); item.Text = text; item.Parent = parent
-    return item
-end
-local function field(parent, placeholder, value, height)
-    local item = Instance.new("TextBox")
-    item.Size = UDim2.new(1, 0, 0, height or 38); item.BackgroundColor3 = Color3.fromRGB(38, 41, 46)
-    item.BorderSizePixel = 0; item.ClearTextOnFocus = false; item.Font = Enum.Font.Code; item.TextSize = 13
-    item.TextColor3 = Color3.fromRGB(238, 237, 231); item.PlaceholderColor3 = Color3.fromRGB(145, 148, 151)
-    item.PlaceholderText = placeholder; item.Text = value or ""; item.Parent = parent
-    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 5); corner.Parent = item
-    return item
-end
-local function button(parent, text, height, accent)
-    local item = Instance.new("TextButton")
-    item.Size = UDim2.new(1, 0, 0, height or 40); item.BackgroundColor3 = accent and Color3.fromRGB(230, 105, 52) or Color3.fromRGB(48, 51, 56)
-    item.BorderSizePixel = 0; item.Font = Enum.Font.GothamBold; item.TextSize = 12; item.TextColor3 = Color3.fromRGB(255, 255, 249)
-    item.Text = text; item.Parent = parent
-    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 5); corner.Parent = item
-    return item
-end
-local function cycle(parent, values, initial, changed)
-    local current = table.find(values, initial) or 1
-    local item = button(parent, "", 36, false)
-    local function update() item.Text = values[current] .. "   ·   click to change" end
-    update()
-    item.Activated:Connect(function() current = current % #values + 1; update(); changed(values[current]) end)
-    return function() return values[current] end, item
-end
-
-local titleLabel = label(root, "MOONHUB   /   STUDIO", 25, Color3.fromRGB(238, 112, 60))
-titleLabel.Position = UDim2.fromOffset(16, 11)
-local subtitle = label(root, "Browse public animations. Upload Studio saves.", 20, Color3.fromRGB(165, 168, 168))
-subtitle.Position = UDim2.fromOffset(16, 34)
-
-local browseTab = button(root, "BROWSE LIBRARY", 34, true)
-browseTab.Position = UDim2.fromOffset(16, 62)
-browseTab.Size = UDim2.new(0.5, -21, 0, 34)
-local uploadTab = button(root, "UPLOAD SAVE", 34, false)
-uploadTab.Position = UDim2.new(0.5, 5, 0, 62)
-uploadTab.Size = UDim2.new(0.5, -21, 0, 34)
-
-local function makePage(name)
-    local page = Instance.new("ScrollingFrame")
-    page.Name = name
-    page.Position = UDim2.fromOffset(16, 105)
-    page.Size = UDim2.new(1, -32, 1, -166)
-    page.BackgroundTransparency = 1
-    page.BorderSizePixel = 0
-    page.ScrollBarThickness = 5
-    page.ScrollBarImageColor3 = Color3.fromRGB(105, 109, 114)
-    page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    page.Visible = false
-    page.Parent = root
-    local padding = Instance.new("UIPadding")
-    padding.PaddingRight = UDim.new(0, 5)
-    padding.PaddingBottom = UDim.new(0, 8)
-    padding.Parent = page
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 9)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = page
-    return page
-end
-
-local browsePage = makePage("BrowsePage")
-local uploadPage = makePage("UploadPage")
-local status = label(root, "Browse MoonHub or upload a selected KeyframeSequence.", 42, Color3.fromRGB(171, 174, 176))
-status.Position = UDim2.new(0, 16, 1, -52)
-status.Size = UDim2.new(1, -32, 0, 40)
-status.TextWrapped = true
-status.TextYAlignment = Enum.TextYAlignment.Center
-
-local function setStatus(message, failed)
-    status.Text = message
-    status.TextColor3 = failed and Color3.fromRGB(255, 130, 107) or Color3.fromRGB(153, 213, 160)
-end
-
-local function showPage(pageName)
-    browsePage.Visible = pageName == "browse"
-    uploadPage.Visible = pageName == "upload"
-    browseTab.BackgroundColor3 = pageName == "browse" and Color3.fromRGB(230, 105, 52) or Color3.fromRGB(48, 51, 56)
-    uploadTab.BackgroundColor3 = pageName == "upload" and Color3.fromRGB(230, 105, 52) or Color3.fromRGB(48, 51, 56)
-end
-
-local selectedCategory = getSetting("Category", "Locomotion")
-local selectedRig = getSetting("Rig", "R15")
-local apiKey = field(uploadPage, "mh_live_…", getSetting("ApiKey", ""), 38)
-local category, categorySelector = cycle(uploadPage, CATEGORIES, selectedCategory, function(value) selectedCategory = value; setSetting("Category", value) end)
-local rigType, rigTypeSelector = cycle(uploadPage, RIGS, selectedRig, function(value) selectedRig = value; setSetting("Rig", value) end)
-apiKey.FocusLost:Connect(function() setSetting("ApiKey", apiKey.Text:gsub("%s", "")) end)
-
-local apiKeyLabel = label(uploadPage, "API KEY  ·  used only for uploads", 18, Color3.fromRGB(165, 168, 168))
-apiKeyLabel.LayoutOrder = 1
-apiKey.LayoutOrder = 2
-local categoryLabel = label(uploadPage, "EXPORT CATEGORY", 18, Color3.fromRGB(165, 168, 168))
-categoryLabel.LayoutOrder = 3
-categorySelector.LayoutOrder = 4
-local rigLabel = label(uploadPage, "RIG TYPE", 18, Color3.fromRGB(165, 168, 168))
-rigLabel.LayoutOrder = 5
-rigTypeSelector.LayoutOrder = 6
-
-local exportButton = button(uploadPage, "UPLOAD SELECTED SAVE TO MOONHUB", 42, true)
-exportButton.LayoutOrder = 7
-label(uploadPage, "Select a KeyframeSequence or folder in Explorer first.", 34, Color3.fromRGB(165, 168, 168)).LayoutOrder = 8
-label(uploadPage, "IMPORT BY SHORT CODE", 18, Color3.fromRGB(165, 168, 168)).LayoutOrder = 9
-local codeField = field(uploadPage, "MH-8492", "", 38)
-codeField.LayoutOrder = 10
-local importButton = button(uploadPage, "IMPORT CODE INTO SERVERSTORAGE", 40, false)
-importButton.LayoutOrder = 11
-showPage("browse")
-
-local searchField = field(browsePage, "Search title or MH code", "", 36)
-searchField.LayoutOrder = 1
-local browseCategories = {"All animations"}
-for _, value in ipairs(CATEGORIES) do table.insert(browseCategories, value) end
-local browseCategoryValue = getSetting("BrowseCategory", "All animations")
-local browseCategory, browseCategorySelector = cycle(browsePage, browseCategories, browseCategoryValue, function(value)
-    browseCategoryValue = value
-    setSetting("BrowseCategory", value)
-end)
-browseCategorySelector.LayoutOrder = 2
-local browseButton = button(browsePage, "LOAD LIBRARY", 38, true)
-browseButton.LayoutOrder = 3
-local browseSummary = label(browsePage, "Public animation library", 22, Color3.fromRGB(165, 168, 168))
-browseSummary.LayoutOrder = 4
-
-local resultCards = {}
-local importByCode
-local browseLoading = false
-
-local function findSequence(instance)
-    if instance:IsA("KeyframeSequence") then return instance end
-    return instance:FindFirstChildWhichIsA("KeyframeSequence", true)
-end
-local function quaternion(cf)
-    local axis, angle = cf:ToAxisAngle()
-    local half = angle / 2
-    local sinHalf = math.sin(half)
-    return axis.X * sinHalf, axis.Y * sinHalf, axis.Z * sinHalf, math.cos(half)
-end
-local function transformValues(cf)
-    local qx, qy, qz, qw = quaternion(cf)
-    return {cf.X, cf.Y, cf.Z, qx, qy, qz, qw}
-end
-local function serializeSequence(sequence, sourceRoot)
-    local frames = sequence:GetKeyframes()
-    table.sort(frames, function(a, b) return a.Time < b.Time end)
-    if #frames == 0 then error("Selected save has no keyframes.") end
-    local byName, maxFrame, motors = {}, 0, {}
-    for _, item in ipairs(sourceRoot:GetDescendants()) do
-        if item:IsA("Motor6D") then
-            local offsets = {c0 = transformValues(item.C0), c1 = transformValues(item.C1)}
-            motors[item.Name] = offsets
-            if item.Part1 then motors[item.Part1.Name] = offsets end
-        end
+-- GENERATED by scripts/build.cjs from src/. Edit src/, then run `node scripts/build.cjs`.
+local definitions, loaded = {}, {}
+local function import(name)
+    if loaded[name] == nil then
+        local define = definitions[name]
+        if not define then error("Unknown module " .. name) end
+        loaded[name] = define()
     end
-    for _, keyframe in ipairs(frames) do
-        local frame = math.max(0, math.floor(keyframe.Time * 60 + 0.5))
-        maxFrame = math.max(maxFrame, frame)
-        for _, pose in ipairs(keyframe:GetDescendants()) do
-            if pose:IsA("Pose") then
-                local name = pose.Name
-                local motorOffsets = motors[name] or {}
-                byName[name] = byName[name] or { boneName = name, times = {}, values = {}, c0 = motorOffsets.c0, c1 = motorOffsets.c1 }
-                local track = byName[name]
-                local cf = pose.CFrame
-                table.insert(track.times, frame)
-                for _, value in ipairs(transformValues(cf)) do table.insert(track.values, value) end
+    return loaded[name]
+end
+
+definitions["Actions"] = function()
+    local Api = import("Api")
+    local Sequence = import("Sequence")
+    local Shell = import("Shell")
+
+    local Actions = {}
+
+    function Actions.importByCode(code, title)
+        local normalized = tostring(code or ""):upper():gsub("%s", "")
+        if not normalized:match("^MH%-%d%d%d%d$") then Shell.setStatus("Enter a code like MH-8492.", true); return end
+        Shell.setStatus("Fetching " .. tostring(title or normalized) .. "…", false)
+        task.spawn(function()
+            local ok, err = pcall(function()
+                Sequence.restoreAnimation(Api.get(normalized), normalized)
+            end)
+            if ok then Shell.setStatus("Imported " .. normalized .. " into ServerStorage.MoonAnimator2Saves.", false)
+            else Shell.setStatus(tostring(err), true) end
+        end)
+    end
+
+    return Actions
+end
+
+definitions["Api"] = function()
+    local Config = import("Config")
+
+    local HttpService = game:GetService("HttpService")
+
+    local API_BASE = Config.API_BASE
+    local Api = {}
+
+    local function decode(response)
+        local ok, value = pcall(function() return HttpService:JSONDecode(response.Body) end)
+        if not ok then error("MoonHub returned an invalid response.") end
+        return value
+    end
+
+    -- Returns an array of animation summaries. Pass offset to page.
+    function Api.list(query, category, offset, limit)
+        local url = API_BASE .. "/animations?view=summary&limit=" .. limit
+        if offset > 0 then url = url .. "&offset=" .. offset end
+        if query ~= "" then url = url .. "&q=" .. HttpService:UrlEncode(query) end
+        if category then url = url .. "&category=" .. HttpService:UrlEncode(category) end
+        local response = HttpService:RequestAsync({Url = url, Method = "GET"})
+        if not response.Success then error("Library request failed (" .. tostring(response.StatusCode) .. ").") end
+        local rows = decode(response)
+        if type(rows) ~= "table" or rows.error then
+            error(type(rows) == "table" and tostring(rows.error) or "MoonHub returned an invalid library response.")
+        end
+        return rows
+    end
+
+    function Api.get(normalized)
+        local response = HttpService:RequestAsync({Url = API_BASE .. "/anim/" .. normalized, Method = "GET"})
+        if not response.Success then error("Could not fetch " .. normalized .. " (" .. tostring(response.StatusCode) .. ").") end
+        return decode(response)
+    end
+
+    function Api.upload(key, body)
+        local response = HttpService:RequestAsync({
+            Url = API_BASE .. "/upload", Method = "POST",
+            Headers = { ["Content-Type"] = "application/json", Authorization = "Bearer " .. key },
+            Body = HttpService:JSONEncode(body),
+        })
+        if not response.Success then error("Upload failed (" .. tostring(response.StatusCode) .. "): " .. response.Body) end
+        return decode(response)
+    end
+
+    -- Returns the username, or nil when the key is invalid or revoked.
+    function Api.me(key)
+        local response = HttpService:RequestAsync({Url = API_BASE .. "/me", Method = "GET", Headers = {Authorization = "Bearer " .. key}})
+        if response.StatusCode == 401 then return nil end
+        if not response.Success then error("MoonHub returned " .. tostring(response.StatusCode) .. ".") end
+        return decode(response).username
+    end
+
+    -- Returns the HTTP status code of a cheap public request.
+    function Api.ping()
+        return HttpService:RequestAsync({Url = API_BASE .. "/animations?view=summary&limit=1", Method = "GET"}).StatusCode
+    end
+
+    return Api
+end
+
+definitions["Config"] = function()
+    return {
+        API_BASE = "https://moonhub.dev/api",
+        SITE_URL = "https://moonhub.dev",
+        DOCS_URL = "https://js-bro-s.github.io/moonhub-studio-bridge/",
+        CATEGORIES = {"FPS Viewmodel", "Melee & Combat", "Locomotion", "Emote", "Cinematic"},
+        RIGS = {"R6", "R15", "FPS Arms", "Custom"},
+    }
+end
+
+definitions["Sequence"] = function()
+    local ServerStorage = game:GetService("ServerStorage")
+    local Selection = game:GetService("Selection")
+
+    local Sequence = {}
+
+    function Sequence.findAll(instance)
+        local found = {}
+        if instance:IsA("KeyframeSequence") then table.insert(found, instance) end
+        for _, item in ipairs(instance:GetDescendants()) do
+            if item:IsA("KeyframeSequence") then table.insert(found, item) end
+        end
+        return found
+    end
+
+    local function quaternion(cf)
+        local axis, angle = cf:ToAxisAngle()
+        local half = angle / 2
+        local sinHalf = math.sin(half)
+        return axis.X * sinHalf, axis.Y * sinHalf, axis.Z * sinHalf, math.cos(half)
+    end
+    local function transformValues(cf)
+        local qx, qy, qz, qw = quaternion(cf)
+        return {cf.X, cf.Y, cf.Z, qx, qy, qz, qw}
+    end
+    function Sequence.serialize(sequence, sourceRoot, rig)
+        local frames = sequence:GetKeyframes()
+        table.sort(frames, function(a, b) return a.Time < b.Time end)
+        if #frames == 0 then error("Selected save has no keyframes.") end
+        local byName, maxFrame, motors = {}, 0, {}
+        for _, item in ipairs(sourceRoot:GetDescendants()) do
+            if item:IsA("Motor6D") then
+                local offsets = {c0 = transformValues(item.C0), c1 = transformValues(item.C1)}
+                motors[item.Name] = offsets
+                if item.Part1 then motors[item.Part1.Name] = offsets end
             end
         end
-    end
-    local tracks = {}
-    for _, track in pairs(byName) do table.insert(tracks, track) end
-    table.sort(tracks, function(a, b) return a.boneName < b.boneName end)
-    if #tracks == 0 then error("No animated poses found in selected save.") end
-    return {schemaVersion = 1, rigType = rigType(), tracks = tracks}, maxFrame
-end
-
-local function poseParent(name, rig)
-    if name == "HumanoidRootPart" or name == "Root" then return nil end
-    if rig == "R6" then
-        if name == "Torso" then return "HumanoidRootPart" end
-        if name == "Head" or name == "Left Arm" or name == "Right Arm" or name == "Left Leg" or name == "Right Leg" then return "Torso" end
-        return "Torso"
-    end
-    if name == "LowerTorso" then return "HumanoidRootPart" end
-    if name == "UpperTorso" then return "LowerTorso" end
-    if name == "Head" or name == "LeftUpperArm" or name == "RightUpperArm" then return "UpperTorso" end
-    if name == "LeftLowerArm" then return "LeftUpperArm" end
-    if name == "RightLowerArm" then return "RightUpperArm" end
-    if name == "LeftHand" then return "LeftLowerArm" end
-    if name == "RightHand" then return "RightLowerArm" end
-    if name == "LeftUpperLeg" or name == "RightUpperLeg" then return "LowerTorso" end
-    if name == "LeftLowerLeg" then return "LeftUpperLeg" end
-    if name == "RightLowerLeg" then return "RightUpperLeg" end
-    if name == "LeftFoot" then return "LeftLowerLeg" end
-    if name == "RightFoot" then return "RightLowerLeg" end
-    return "HumanoidRootPart"
-end
-
-local function restoreAnimation(animation, code)
-    local payload = animation.payload_json
-    if not payload or type(payload.tracks) ~= "table" then error("Save has no supported normalized keyframe data.") end
-    local times = {}
-    for _, track in ipairs(payload.tracks) do
-        if type(track.times) ~= "table" or type(track.values) ~= "table" then error("Animation has an invalid keyframe track.") end
-        for _, frame in ipairs(track.times) do
-            if type(frame) ~= "number" or frame < 0 or frame % 1 ~= 0 then error("Animation has an invalid frame time.") end
-            times[frame] = true
-        end
-    end
-    local sortedTimes = {}
-    for frame in pairs(times) do table.insert(sortedTimes, frame) end
-    table.sort(sortedTimes)
-    if #sortedTimes == 0 then error("Save has no keyframes to import.") end
-
-    local sequence = Instance.new("KeyframeSequence")
-    sequence.Name = tostring(animation.title or "MoonHub animation") .. " (" .. code .. ")"
-    sequence.Loop = false
-    for _, frame in ipairs(sortedTimes) do
-        local keyframe = Instance.new("Keyframe")
-        keyframe.Name = "Frame " .. tostring(frame)
-        keyframe.Time = frame / (animation.fps or 60)
-        keyframe.Parent = sequence
-        local poseCache = {}
-        local function ensurePose(name)
-            if poseCache[name] then return poseCache[name] end
-            local pose = Instance.new("Pose")
-            pose.Name = name
-            pose.CFrame = CFrame.new()
-            poseCache[name] = pose
-            local parentName = poseParent(name, animation.rig_type or "R15")
-            pose.Parent = parentName and ensurePose(parentName) or keyframe
-            return pose
-        end
-        ensurePose("HumanoidRootPart")
-        for _, track in ipairs(payload.tracks) do
-            for index, trackFrame in ipairs(track.times) do
-                if trackFrame == frame then
-                    local offset = (index - 1) * 7
-                    local values = track.values
-                    local pose = ensurePose(tostring(track.boneName or "HumanoidRootPart"))
-                    pose.CFrame = CFrame.new(values[offset+1], values[offset+2], values[offset+3], values[offset+4], values[offset+5], values[offset+6], values[offset+7])
-                    break
+        for _, keyframe in ipairs(frames) do
+            local frame = math.max(0, math.floor(keyframe.Time * 60 + 0.5))
+            maxFrame = math.max(maxFrame, frame)
+            for _, pose in ipairs(keyframe:GetDescendants()) do
+                if pose:IsA("Pose") then
+                    local name = pose.Name
+                    local motorOffsets = motors[name] or {}
+                    byName[name] = byName[name] or { boneName = name, times = {}, values = {}, c0 = motorOffsets.c0, c1 = motorOffsets.c1 }
+                    local track = byName[name]
+                    local cf = pose.CFrame
+                    table.insert(track.times, frame)
+                    for _, value in ipairs(transformValues(cf)) do table.insert(track.values, value) end
                 end
             end
         end
+        local tracks = {}
+        for _, track in pairs(byName) do table.insert(tracks, track) end
+        table.sort(tracks, function(a, b) return a.boneName < b.boneName end)
+        if #tracks == 0 then error("No animated poses found in selected save.") end
+        return {schemaVersion = 1, rigType = rig, tracks = tracks}, maxFrame
     end
-    local folder = ServerStorage:FindFirstChild("MoonAnimator2Saves")
-    if not folder then folder = Instance.new("Folder"); folder.Name = "MoonAnimator2Saves"; folder.Parent = ServerStorage end
-    sequence.Parent = folder
-    Selection:Set({sequence})
-end
 
-importByCode = function(code, title)
-    local normalized = tostring(code or ""):upper():gsub("%s", "")
-    if not normalized:match("^MH%-%d%d%d%d$") then setStatus("Enter a code like MH-8492.", true); return end
-    setStatus("Fetching " .. tostring(title or normalized) .. "…", false)
-    task.spawn(function()
-        local ok, err = pcall(function()
-            local response = HttpService:RequestAsync({Url = API_BASE .. "/anim/" .. normalized, Method = "GET"})
-            if not response.Success then error("Could not fetch " .. normalized .. " (" .. tostring(response.StatusCode) .. ").") end
-            restoreAnimation(HttpService:JSONDecode(response.Body), normalized)
-        end)
-        if ok then setStatus("Imported " .. normalized .. " into ServerStorage.MoonAnimator2Saves.", false)
-        else setStatus(tostring(err), true) end
-    end)
-end
+    local function poseParent(name, rig)
+        if name == "HumanoidRootPart" or name == "Root" then return nil end
+        if rig == "R6" then
+            if name == "Torso" then return "HumanoidRootPart" end
+            if name == "Head" or name == "Left Arm" or name == "Right Arm" or name == "Left Leg" or name == "Right Leg" then return "Torso" end
+            return "Torso"
+        end
+        if name == "LowerTorso" then return "HumanoidRootPart" end
+        if name == "UpperTorso" then return "LowerTorso" end
+        if name == "Head" or name == "LeftUpperArm" or name == "RightUpperArm" then return "UpperTorso" end
+        if name == "LeftLowerArm" then return "LeftUpperArm" end
+        if name == "RightLowerArm" then return "RightUpperArm" end
+        if name == "LeftHand" then return "LeftLowerArm" end
+        if name == "RightHand" then return "RightLowerArm" end
+        if name == "LeftUpperLeg" or name == "RightUpperLeg" then return "LowerTorso" end
+        if name == "LeftLowerLeg" then return "LeftUpperLeg" end
+        if name == "RightLowerLeg" then return "RightUpperLeg" end
+        if name == "LeftFoot" then return "LeftLowerLeg" end
+        if name == "RightFoot" then return "RightLowerLeg" end
+        return "HumanoidRootPart"
+    end
 
-local function createResultCard(animation, order)
-    if type(animation) ~= "table" or type(animation.short_code) ~= "string" then return false end
-    local card = Instance.new("Frame")
-    card.Name = "AnimationResult"
-    card.Size = UDim2.new(1, 0, 0, 94)
-    card.BackgroundColor3 = Color3.fromRGB(34, 37, 42)
-    card.BorderSizePixel = 0
-    card.LayoutOrder = 100 + order
-    card.Parent = browsePage
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = card
-
-    local animationTitle = label(card, tostring(animation.title or "Untitled animation"), 36, Color3.fromRGB(238, 237, 231))
-    animationTitle.Position = UDim2.fromOffset(11, 8)
-    animationTitle.Size = UDim2.new(1, -120, 0, 36)
-    animationTitle.Font = Enum.Font.GothamBold
-    animationTitle.TextWrapped = true
-    animationTitle.TextYAlignment = Enum.TextYAlignment.Top
-    local metadata = label(card, tostring(animation.category or "Animation") .. "  ·  " .. tostring(animation.rig_type or "Custom") .. "  ·  " .. animation.short_code, 18, Color3.fromRGB(238, 112, 60))
-    metadata.Position = UDim2.fromOffset(11, 49)
-    metadata.Size = UDim2.new(1, -120, 0, 18)
-    metadata.TextSize = 11
-    local author = label(card, "by " .. tostring(animation.author or "MoonHub creator"), 16, Color3.fromRGB(165, 168, 168))
-    author.Position = UDim2.fromOffset(11, 69)
-    author.Size = UDim2.new(1, -120, 0, 16)
-    author.TextSize = 11
-    local importResult = button(card, "IMPORT", 32, false)
-    importResult.Position = UDim2.new(1, -101, 0.5, -16)
-    importResult.Size = UDim2.fromOffset(90, 32)
-    importResult.Activated:Connect(function() importByCode(animation.short_code, animation.title) end)
-    table.insert(resultCards, card)
-    return true
-end
-
-local function loadLibrary()
-    if browseLoading then return end
-    browseLoading = true
-    browseButton.Active = false
-    browseButton.Text = "LOADING LIBRARY…"
-    local url = API_BASE .. "/animations?view=summary&limit=20"
-    local query = searchField.Text:gsub("^%s+", ""):gsub("%s+$", "")
-    if query ~= "" then url = url .. "&q=" .. HttpService:UrlEncode(query) end
-    local chosenCategory = browseCategory()
-    if chosenCategory ~= "All animations" then url = url .. "&category=" .. HttpService:UrlEncode(chosenCategory) end
-    task.spawn(function()
-        local ok, result = pcall(function()
-            local response = HttpService:RequestAsync({Url = url, Method = "GET"})
-            if not response.Success then error("Library request failed (" .. tostring(response.StatusCode) .. ").") end
-            local rows = HttpService:JSONDecode(response.Body)
-            if type(rows) ~= "table" or rows.error then error(type(rows) == "table" and tostring(rows.error) or "MoonHub returned an invalid library response.") end
-            for _, card in ipairs(resultCards) do card:Destroy() end
-            table.clear(resultCards)
-            local count = 0
-            for _, animation in ipairs(rows) do
-                if createResultCard(animation, count + 1) then count += 1 end
+    function Sequence.restoreAnimation(animation, code)
+        local payload = animation.payload_json
+        if not payload or type(payload.tracks) ~= "table" then error("Save has no supported normalized keyframe data.") end
+        local times = {}
+        for _, track in ipairs(payload.tracks) do
+            if type(track.times) ~= "table" or type(track.values) ~= "table" then error("Animation has an invalid keyframe track.") end
+            for _, frame in ipairs(track.times) do
+                if type(frame) ~= "number" or frame < 0 or frame % 1 ~= 0 then error("Animation has an invalid frame time.") end
+                times[frame] = true
             end
-            return count
-        end)
-        browseLoading = false
-        browseButton.Active = true
-        browseButton.Text = "LOAD LIBRARY"
-        if not ok then
-            browseSummary.Text = "Could not load library. Check HTTP settings and connection."
-            setStatus(tostring(result), true)
-        elseif result == 0 then
-            browseSummary.Text = "No animations match. Change search or category."
-            setStatus("No public animations found.", false)
-        else
-            browseSummary.Text = tostring(result) .. " recent public animations"
-            setStatus("Library loaded. Select an animation to import.", false)
+        end
+        local sortedTimes = {}
+        for frame in pairs(times) do table.insert(sortedTimes, frame) end
+        table.sort(sortedTimes)
+        if #sortedTimes == 0 then error("Save has no keyframes to import.") end
+
+        local sequence = Instance.new("KeyframeSequence")
+        sequence.Name = tostring(animation.title or "MoonHub animation") .. " (" .. code .. ")"
+        sequence.Loop = false
+        for _, frame in ipairs(sortedTimes) do
+            local keyframe = Instance.new("Keyframe")
+            keyframe.Name = "Frame " .. tostring(frame)
+            keyframe.Time = frame / (animation.fps or 60)
+            keyframe.Parent = sequence
+            local poseCache = {}
+            local function ensurePose(name)
+                if poseCache[name] then return poseCache[name] end
+                local pose = Instance.new("Pose")
+                pose.Name = name
+                pose.CFrame = CFrame.new()
+                poseCache[name] = pose
+                local parentName = poseParent(name, animation.rig_type or "R15")
+                pose.Parent = parentName and ensurePose(parentName) or keyframe
+                return pose
+            end
+            ensurePose("HumanoidRootPart")
+            for _, track in ipairs(payload.tracks) do
+                for index, trackFrame in ipairs(track.times) do
+                    if trackFrame == frame then
+                        local offset = (index - 1) * 7
+                        local values = track.values
+                        local pose = ensurePose(tostring(track.boneName or "HumanoidRootPart"))
+                        pose.CFrame = CFrame.new(values[offset+1], values[offset+2], values[offset+3], values[offset+4], values[offset+5], values[offset+6], values[offset+7])
+                        break
+                    end
+                end
+            end
+        end
+        local folder = ServerStorage:FindFirstChild("MoonAnimator2Saves")
+        if not folder then folder = Instance.new("Folder"); folder.Name = "MoonAnimator2Saves"; folder.Parent = ServerStorage end
+        sequence.Parent = folder
+        Selection:Set({sequence})
+    end
+
+
+    return Sequence
+end
+
+definitions["Shell"] = function()
+    local Config = import("Config")
+    local Store = import("Store")
+    local Theme = import("Theme")
+    local Ui = import("Ui")
+
+    local Shell = {}
+    local GUIDE = Enum.StudioStyleGuideColor
+    local HEADER, TABS, STATUS = 40, 32, 30
+    local TAB_COUNT = 3
+
+    local toolbar = plugin:CreateToolbar("MoonHub")
+    local toggle = toolbar:CreateButton("MoonHub", "Browse animations and upload Studio saves", "rbxassetid://6031075931")
+    toggle.ClickableWhenViewportHidden = true
+    local widgetInfo = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, false, 400, 560, 360, 480)
+    local widget = plugin:CreateDockWidgetPluginGui("MoonHubBridge_v1", widgetInfo)
+    widget.Title = "MoonHub · Animation bridge"
+    widget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    toggle.Click:Connect(function() widget.Enabled = not widget.Enabled end)
+
+    local root = Instance.new("Frame")
+    root.Name = "Root"; root.Size = UDim2.fromScale(1, 1); root.BorderSizePixel = 0; root.Parent = widget
+    Theme.bind(root, "BackgroundColor3", GUIDE.MainBackground)
+
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, HEADER); header.BorderSizePixel = 0; header.Parent = root
+    Theme.bind(header, "BackgroundColor3", GUIDE.Titlebar)
+    local title = Instance.new("TextLabel")
+    title.BackgroundTransparency = 1; title.Size = UDim2.new(1, -150, 1, 0); title.Position = UDim2.fromOffset(14, 0)
+    title.Font = Enum.Font.GothamBold; title.TextSize = 13; title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Text = "MOONHUB  /  STUDIO BRIDGE"; title.TextColor3 = Theme.ACCENT; title.Parent = header
+    local keyDot = Instance.new("TextLabel")
+    keyDot.BackgroundTransparency = 1; keyDot.Size = UDim2.new(0, 130, 1, 0); keyDot.Position = UDim2.new(1, -140, 0, 0)
+    keyDot.Font = Enum.Font.Gotham; keyDot.TextSize = 12; keyDot.TextXAlignment = Enum.TextXAlignment.Right
+    keyDot.TextTruncate = Enum.TextTruncate.AtEnd; keyDot.Parent = header
+
+    local tabBar = Instance.new("Frame")
+    tabBar.Size = UDim2.new(1, 0, 0, TABS); tabBar.Position = UDim2.fromOffset(0, HEADER)
+    tabBar.BorderSizePixel = 0; tabBar.Parent = root
+    Theme.bind(tabBar, "BackgroundColor3", GUIDE.Titlebar)
+    local tabLayout = Instance.new("UIListLayout")
+    tabLayout.FillDirection = Enum.FillDirection.Horizontal; tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    tabLayout.Parent = tabBar
+
+    local statusBar = Instance.new("TextButton")
+    statusBar.Size = UDim2.new(1, 0, 0, STATUS); statusBar.Position = UDim2.new(0, 0, 1, -STATUS)
+    statusBar.BorderSizePixel = 0; statusBar.AutoButtonColor = false; statusBar.Font = Enum.Font.Gotham; statusBar.TextSize = 12
+    statusBar.TextXAlignment = Enum.TextXAlignment.Left; statusBar.TextTruncate = Enum.TextTruncate.AtEnd
+    statusBar.Text = ""; statusBar.Parent = root
+    Theme.bind(statusBar, "BackgroundColor3", GUIDE.Titlebar)
+
+    function Shell.setStatus(message, failed)
+        statusBar.Text = "   " .. message
+        statusBar.TextColor3 = failed and Theme.ERR or Theme.OK
+    end
+    statusBar.Activated:Connect(function() statusBar.Text = "" end)
+    Shell.setStatus("Ready. Click this bar to dismiss messages.", false)
+
+    function Shell.refreshKeyDot()
+        local state = Store.state
+        local hasKey = state.apiKey ~= ""
+        keyDot.Text = state.username and ("● " .. state.username) or (hasKey and "● key set" or "○ no key")
+        keyDot.TextColor3 = hasKey and Theme.OK or Theme.ERR
+    end
+    Shell.refreshKeyDot()
+
+    local tabs, tabButtons = {}, {}
+
+    function Shell.selectTab(name)
+        for tabName, frame in pairs(tabs) do frame.Visible = tabName == name end
+        for tabName, tabButton in pairs(tabButtons) do
+            local selected = tabName == name
+            tabButton.TextColor3 = selected and Theme.ACCENT or Theme.color(GUIDE.SubText)
+            tabButton.Font = selected and Enum.Font.GothamBold or Enum.Font.Gotham
+        end
+    end
+
+    -- Returns the scrolling body frame for a new tab.
+    function Shell.addTab(name, order)
+        local tabButton = Instance.new("TextButton")
+        tabButton.Size = UDim2.new(1 / TAB_COUNT, 0, 1, 0); tabButton.BackgroundTransparency = 1
+        tabButton.TextSize = 12; tabButton.Text = name; tabButton.LayoutOrder = order; tabButton.Parent = tabBar
+        tabButton.Activated:Connect(function() Shell.selectTab(name) end)
+        tabButtons[name] = tabButton
+        local body = Instance.new("ScrollingFrame")
+        body.Name = name; body.Visible = false; body.BorderSizePixel = 0; body.BackgroundTransparency = 1
+        body.Position = UDim2.fromOffset(0, HEADER + TABS); body.Size = UDim2.new(1, 0, 1, -(HEADER + TABS + STATUS))
+        body.AutomaticCanvasSize = Enum.AutomaticSize.Y; body.CanvasSize = UDim2.new()
+        body.ScrollBarThickness = 6; body.Parent = root
+        Ui.padding(body, 14); Ui.stack(body)
+        tabs[name] = body
+        return body
+    end
+
+    Shell.docsUrl = Config.DOCS_URL
+
+    return Shell
+end
+
+definitions["Store"] = function()
+    local Store = {}
+
+    local listeners = {}
+
+    local function load(name, fallback)
+        local value = plugin:GetSetting("MoonHub_" .. name)
+        if value == nil then return fallback end
+        return value
+    end
+
+    Store.state = {
+        apiKey = load("ApiKey", ""),
+        category = load("Category", "Locomotion"),
+        rig = load("Rig", "R15"),
+        username = nil,
+    }
+
+    function Store.save(name, value)
+        plugin:SetSetting("MoonHub_" .. name, value)
+    end
+
+    function Store.subscribe(listener)
+        table.insert(listeners, listener)
+    end
+
+    function Store.notify()
+        for _, listener in ipairs(listeners) do listener() end
+    end
+
+    return Store
+end
+
+definitions["Theme"] = function()
+    local Theme = {
+        ACCENT = Color3.fromRGB(230, 105, 52),
+        ACCENT_TEXT = Color3.fromRGB(255, 255, 249),
+        OK = Color3.fromRGB(110, 190, 120),
+        ERR = Color3.fromRGB(240, 110, 90),
+    }
+
+    local themed = {}
+
+    function Theme.color(guide, modifier)
+        return settings().Studio.Theme:GetColor(guide, modifier or Enum.StudioStyleGuideModifier.Default)
+    end
+
+    -- Binds a property to a Studio style guide color and re-applies it on theme change.
+    function Theme.bind(instance, property, guide, modifier)
+        table.insert(themed, {instance, property, guide, modifier})
+        instance[property] = Theme.color(guide, modifier)
+        return instance
+    end
+
+    settings().Studio.ThemeChanged:Connect(function()
+        for _, entry in ipairs(themed) do
+            entry[1][entry[2]] = Theme.color(entry[3], entry[4])
         end
     end)
+
+    return Theme
 end
 
-browseButton.Activated:Connect(loadLibrary)
-searchField.FocusLost:Connect(function(enterPressed) if enterPressed then loadLibrary() end end)
-importButton.Activated:Connect(function() importByCode(codeField.Text) end)
+definitions["Ui"] = function()
+    local Theme = import("Theme")
 
-exportButton.Activated:Connect(function()
-    local key = apiKey.Text:gsub("%s", "")
-    if key == "" then setStatus("Add API key. Create one at moonhub.dev/dashboard.", true); return end
-    local selection = Selection:Get()
-    if #selection == 0 then setStatus("Select a KeyframeSequence or save folder first.", true); return end
-    local sequence = findSequence(selection[1])
-    if not sequence then setStatus("No KeyframeSequence found in selected object.", true); return end
-    exportButton.Active = false
-    exportButton.Text = "UPLOADING…"
-    setStatus("Uploading " .. sequence.Name .. "…", false)
-    task.spawn(function()
-        local ok, result = pcall(function()
-            local payload, duration = serializeSequence(sequence, selection[1])
-            local response = HttpService:RequestAsync({
-                Url = API_BASE .. "/upload", Method = "POST",
-                Headers = { ["Content-Type"] = "application/json", Authorization = "Bearer " .. key },
-                Body = HttpService:JSONEncode({ title = sequence.Name, category = category(), rig_type = rigType(), duration_frames = math.max(duration, 1), fps = 60, payload_json = payload, tags = "moon-animator,studio" }),
-            })
-            if not response.Success then error("Upload failed (" .. tostring(response.StatusCode) .. "): " .. response.Body) end
-            return HttpService:JSONDecode(response.Body)
+    local Ui = {}
+    local GUIDE = Enum.StudioStyleGuideColor
+    local RADIUS = UDim.new(0, 5)
+    local order = 0
+
+    function Ui.nextOrder()
+        order += 1
+        return order
+    end
+
+    function Ui.corner(parent)
+        local item = Instance.new("UICorner"); item.CornerRadius = RADIUS; item.Parent = parent
+    end
+
+    function Ui.padding(parent, all)
+        local item = Instance.new("UIPadding")
+        item.PaddingTop = UDim.new(0, all); item.PaddingBottom = UDim.new(0, all)
+        item.PaddingLeft = UDim.new(0, all); item.PaddingRight = UDim.new(0, all); item.Parent = parent
+        return item
+    end
+
+    function Ui.stack(parent, gap)
+        local item = Instance.new("UIListLayout")
+        item.Padding = UDim.new(0, gap or 8); item.SortOrder = Enum.SortOrder.LayoutOrder; item.Parent = parent
+    end
+
+    function Ui.label(parent, text, height, small)
+        local item = Instance.new("TextLabel")
+        item.BackgroundTransparency = 1; item.Size = UDim2.new(1, 0, 0, height or 20); item.LayoutOrder = Ui.nextOrder()
+        item.Font = Enum.Font.GothamMedium; item.TextSize = small and 11 or 13; item.TextWrapped = true
+        item.TextXAlignment = Enum.TextXAlignment.Left; item.TextYAlignment = Enum.TextYAlignment.Top
+        item.Text = text; item.Parent = parent
+        Theme.bind(item, "TextColor3", small and GUIDE.SubText or GUIDE.MainText)
+        return item
+    end
+
+    function Ui.field(parent, placeholder, value)
+        local item = Instance.new("TextBox")
+        item.Size = UDim2.new(1, 0, 0, 34); item.LayoutOrder = Ui.nextOrder(); item.BorderSizePixel = 0
+        item.ClearTextOnFocus = false; item.Font = Enum.Font.Code; item.TextSize = 13; item.TextXAlignment = Enum.TextXAlignment.Left
+        item.PlaceholderText = placeholder; item.Text = value or ""; item.Parent = parent
+        Theme.bind(item, "BackgroundColor3", GUIDE.InputFieldBackground)
+        Theme.bind(item, "TextColor3", GUIDE.MainText)
+        Theme.bind(item, "PlaceholderColor3", GUIDE.SubText)
+        Ui.corner(item); Ui.padding(item, 8)
+        return item
+    end
+
+    function Ui.button(parent, text, accent)
+        local item = Instance.new("TextButton")
+        item.Size = UDim2.new(1, 0, 0, accent and 40 or 34); item.LayoutOrder = Ui.nextOrder(); item.BorderSizePixel = 0
+        item.Font = Enum.Font.GothamBold; item.TextSize = 12; item.Text = text; item.Parent = parent
+        if accent then
+            item.BackgroundColor3 = Theme.ACCENT; item.TextColor3 = Theme.ACCENT_TEXT
+        else
+            Theme.bind(item, "BackgroundColor3", GUIDE.Button)
+            Theme.bind(item, "TextColor3", GUIDE.ButtonText)
+        end
+        Ui.corner(item)
+        return item
+    end
+
+    -- Returns a setter that updates the shown value without firing `changed`.
+    function Ui.dropdown(parent, values, initial, changed)
+        local holder = Instance.new("Frame")
+        holder.BackgroundTransparency = 1; holder.Size = UDim2.new(1, 0, 0, 34); holder.AutomaticSize = Enum.AutomaticSize.Y
+        holder.LayoutOrder = Ui.nextOrder(); holder.Parent = parent
+        Ui.stack(holder, 2)
+        local head = Ui.button(holder, "", false)
+        head.LayoutOrder = 0
+        local options = {}
+        local function set(index, silent)
+            head.Text = values[index] .. "  ▾"
+            for _, option in ipairs(options) do option.Visible = false end
+            if not silent then changed(values[index]) end
+        end
+        for index, value in ipairs(values) do
+            local option = Ui.button(holder, value, false)
+            option.LayoutOrder = index; option.Visible = false
+            option.Activated:Connect(function() set(index) end)
+            options[index] = option
+        end
+        head.Activated:Connect(function()
+            local open = not options[1].Visible
+            for _, option in ipairs(options) do option.Visible = open end
         end)
-        exportButton.Active = true
-        exportButton.Text = "UPLOAD SELECTED SAVE TO MOONHUB"
-        if ok then setStatus("Published " .. result.short_code .. " · " .. result.url, false)
-        else setStatus(tostring(result), true) end
-    end)
-end)
+        set(table.find(values, initial) or 1, true)
+        return function(value) set(table.find(values, value) or 1, true) end
+    end
 
-browseTab.Activated:Connect(function() showPage("browse") end)
-uploadTab.Activated:Connect(function() showPage("upload") end)
+    -- Rich-text info card. Returns the frame and its text label.
+    function Ui.card(parent)
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 0, 0); frame.AutomaticSize = Enum.AutomaticSize.Y; frame.BorderSizePixel = 0
+        frame.LayoutOrder = Ui.nextOrder(); frame.Parent = parent
+        Theme.bind(frame, "BackgroundColor3", GUIDE.InputFieldBackground)
+        Ui.corner(frame); Ui.padding(frame, 10)
+        local text = Instance.new("TextLabel")
+        text.BackgroundTransparency = 1; text.Size = UDim2.new(1, 0, 0, 0); text.AutomaticSize = Enum.AutomaticSize.Y
+        text.Font = Enum.Font.Gotham; text.TextSize = 12; text.TextWrapped = true; text.RichText = true
+        text.TextXAlignment = Enum.TextXAlignment.Left; text.TextYAlignment = Enum.TextYAlignment.Top; text.Parent = frame
+        Theme.bind(text, "TextColor3", GUIDE.MainText)
+        return frame, text
+    end
+
+    function Ui.escapeRich(text)
+        return (tostring(text):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+    end
+
+    return Ui
+end
+
+definitions["init"] = function()
+    -- MoonHub Studio bridge. Allow HTTP requests in Studio settings before use.
+    local Shell = import("Shell")
+    local Store = import("Store")
+
+    import("tabs/Browse")()
+    import("tabs/Export")()
+    import("tabs/Settings")()
+
+    Shell.selectTab(Store.state.apiKey == "" and "Settings" or "Browse")
+end
+
+definitions["tabs/Browse"] = function()
+    local Actions = import("Actions")
+    local Api = import("Api")
+    local Config = import("Config")
+    local Shell = import("Shell")
+    local Theme = import("Theme")
+    local Ui = import("Ui")
+
+    local GUIDE = Enum.StudioStyleGuideColor
+    local BROWSE_LIMIT = 30
+
+    return function()
+        local tab = Shell.addTab("Browse", 1)
+        local browse = {query = "", category = nil, token = 0, selected = nil, rows = {}}
+
+        Ui.label(tab, "SEARCH", 15, true)
+        local searchField = Ui.field(tab, "title, code, or tag", "")
+
+        local chipBar = Instance.new("ScrollingFrame")
+        chipBar.Size = UDim2.new(1, 0, 0, 36); chipBar.LayoutOrder = Ui.nextOrder(); chipBar.BackgroundTransparency = 1
+        chipBar.BorderSizePixel = 0; chipBar.ScrollBarThickness = 3; chipBar.CanvasSize = UDim2.new()
+        chipBar.AutomaticCanvasSize = Enum.AutomaticSize.X; chipBar.ScrollingDirection = Enum.ScrollingDirection.X; chipBar.Parent = tab
+        local chipLayout = Instance.new("UIListLayout")
+        chipLayout.FillDirection = Enum.FillDirection.Horizontal; chipLayout.Padding = UDim.new(0, 6)
+        chipLayout.SortOrder = Enum.SortOrder.LayoutOrder; chipLayout.Parent = chipBar
+
+        local detailCard, detailText = Ui.card(tab)
+        detailCard.Visible = false
+        local importSelected = Ui.button(tab, "IMPORT TO SERVERSTORAGE", true)
+        importSelected.Visible = false
+        local linkField = Ui.field(tab, "", "")
+        linkField.TextEditable = false; linkField.Visible = false
+
+        local listStatus = Ui.label(tab, "", 20, true)
+        local resultsHolder = Instance.new("Frame")
+        resultsHolder.BackgroundTransparency = 1; resultsHolder.Size = UDim2.new(1, 0, 0, 0); resultsHolder.AutomaticSize = Enum.AutomaticSize.Y
+        resultsHolder.LayoutOrder = Ui.nextOrder(); resultsHolder.Parent = tab
+        Ui.stack(resultsHolder, 6)
+        local moreButton = Ui.button(tab, "LOAD MORE", false)
+        moreButton.Visible = false
+        local refreshButton = Ui.button(tab, "REFRESH", false)
+
+        Ui.label(tab, "IMPORT BY SHORT CODE", 15, true)
+        local codeField = Ui.field(tab, "MH-8492", "")
+        local importButton = Ui.button(tab, "IMPORT CODE INTO SERVERSTORAGE", false)
+        importButton.Activated:Connect(function() Actions.importByCode(codeField.Text) end)
+
+        local function showDetail(row)
+            browse.selected = row
+            local tags = (row.tags and #row.tags > 0) and table.concat(row.tags, ", ") or "none"
+            detailText.Text = "<b>" .. Ui.escapeRich(row.title) .. "</b>\n" ..
+                Ui.escapeRich(row.short_code .. " · " .. row.category .. " · " .. row.rig_type) .. "\n" ..
+                Ui.escapeRich(row.description or "No description.") .. "\nTags: " .. Ui.escapeRich(tags)
+            detailCard.Visible = true; importSelected.Visible = true
+            linkField.Text = Config.SITE_URL .. "/anim/" .. row.short_code; linkField.Visible = true
+            tab.CanvasPosition = Vector2.zero
+        end
+        importSelected.Activated:Connect(function()
+            local animation = browse.selected
+            if animation then Actions.importByCode(animation.short_code, animation.title) end
+        end)
+
+        local function renderRows(rows)
+            for _, child in ipairs(resultsHolder:GetChildren()) do
+                if child:IsA("GuiObject") then child:Destroy() end
+            end
+            for index, row in ipairs(rows) do
+                if type(row) == "table" and type(row.short_code) == "string" then
+                    local item = Instance.new("TextButton")
+                    item.Size = UDim2.new(1, 0, 0, 62); item.LayoutOrder = index; item.BorderSizePixel = 0; item.AutoButtonColor = true
+                    item.Font = Enum.Font.Gotham; item.TextSize = 12; item.RichText = true; item.TextWrapped = true
+                    item.TextXAlignment = Enum.TextXAlignment.Left; item.TextYAlignment = Enum.TextYAlignment.Top
+                    item.Text = "<b>" .. Ui.escapeRich(row.title or "Untitled animation") .. "</b>\n" ..
+                        Ui.escapeRich(row.short_code .. " · " .. tostring(row.rig_type) .. " · " .. tostring(row.fps) .. "fps · " .. tostring(row.duration_frames) .. "f") .. "\n" ..
+                        Ui.escapeRich("by " .. tostring(row.author or "MoonHub creator") .. "   ♥ " .. tostring(row.likes_count or 0) .. "   ⬇ " .. tostring(row.downloads_count or 0))
+                    item.Parent = resultsHolder
+                    Theme.bind(item, "BackgroundColor3", GUIDE.InputFieldBackground)
+                    Theme.bind(item, "TextColor3", GUIDE.MainText)
+                    Ui.corner(item); Ui.padding(item, 8)
+                    item.Activated:Connect(function() showDetail(row) end)
+                end
+            end
+        end
+
+        local function loadBrowse(append)
+            browse.token += 1
+            local token = browse.token
+            listStatus.Text = "Loading…"; listStatus.TextColor3 = Theme.color(GUIDE.SubText)
+            local ok, result = pcall(Api.list, browse.query, browse.category, append and #browse.rows or 0, BROWSE_LIMIT)
+            if token ~= browse.token then return end
+            if not ok then
+                if not append then browse.rows = {}; renderRows({}); moreButton.Visible = false end
+                listStatus.Text = tostring(result):find("not enabled") and "HTTP blocked. Enable in Game Settings → Security." or tostring(result)
+                listStatus.TextColor3 = Theme.ERR
+                return
+            end
+            if append then table.move(result, 1, #result, #browse.rows + 1, browse.rows) else browse.rows = result end
+            renderRows(browse.rows)
+            moreButton.Visible = #result == BROWSE_LIMIT
+            listStatus.Text = #browse.rows == 0 and "No animations match." or (#browse.rows .. " animations")
+        end
+
+        local chipButtons = {}
+        local function renderChips()
+            for name, chip in pairs(chipButtons) do
+                local selected = (browse.category == nil and name == "All") or name == browse.category
+                chip.BackgroundColor3 = selected and Theme.ACCENT or Theme.color(GUIDE.Button)
+                chip.TextColor3 = selected and Theme.ACCENT_TEXT or Theme.color(GUIDE.ButtonText)
+            end
+        end
+        local chipNames = {"All", table.unpack(Config.CATEGORIES)}
+        for index, name in ipairs(chipNames) do
+            local chip = Instance.new("TextButton")
+            chip.AutomaticSize = Enum.AutomaticSize.X; chip.Size = UDim2.new(0, 0, 0, 28); chip.LayoutOrder = index
+            chip.BorderSizePixel = 0; chip.Font = Enum.Font.GothamMedium; chip.TextSize = 12; chip.Text = name; chip.Parent = chipBar
+            Ui.corner(chip)
+            local chipPad = Ui.padding(chip, 0)
+            chipPad.PaddingLeft = UDim.new(0, 12); chipPad.PaddingRight = UDim.new(0, 12)
+            chip.Activated:Connect(function()
+                browse.category = name ~= "All" and name or nil
+                renderChips(); task.spawn(loadBrowse)
+            end)
+            chipButtons[name] = chip
+        end
+        renderChips()
+
+        searchField:GetPropertyChangedSignal("Text"):Connect(function()
+            local text = searchField.Text:match("^%s*(.-)%s*$")
+            task.delay(0.3, function()
+                if searchField.Text:match("^%s*(.-)%s*$") ~= text or browse.query == text then return end
+                browse.query = text
+                loadBrowse()
+            end)
+        end)
+        refreshButton.Activated:Connect(function() task.spawn(loadBrowse) end)
+        moreButton.Activated:Connect(function() task.spawn(loadBrowse, true) end)
+
+        local loaded = false
+        tab:GetPropertyChangedSignal("Visible"):Connect(function()
+            if tab.Visible and not loaded then loaded = true; task.spawn(loadBrowse) end
+        end)
+    end
+end
+
+definitions["tabs/Export"] = function()
+    local Api = import("Api")
+    local Config = import("Config")
+    local Sequence = import("Sequence")
+    local Shell = import("Shell")
+    local Store = import("Store")
+    local Theme = import("Theme")
+    local Ui = import("Ui")
+
+    local Selection = game:GetService("Selection")
+
+    local function describe(entry)
+        local frames = entry.sequence:GetKeyframes()
+        local maxTime, poses, count = 0, {}, 0
+        for _, keyframe in ipairs(frames) do
+            maxTime = math.max(maxTime, keyframe.Time)
+            for _, pose in ipairs(keyframe:GetDescendants()) do
+                if pose:IsA("Pose") and not poses[pose.Name] then poses[pose.Name] = true; count += 1 end
+            end
+        end
+        return #frames, math.floor(maxTime * 60 + 0.5), count, poses
+    end
+
+    local function detectRig(poses)
+        if poses.UpperTorso or poses.LowerTorso then return "R15" end
+        if poses.Torso then return "R6" end
+        return nil
+    end
+
+    return function()
+        local state = Store.state
+        local tab = Shell.addTab("Export", 2)
+        local candidates, chosen = {}, nil -- candidates: {sequence, root}
+        local refresh
+
+        Ui.label(tab, "SELECTION", 15, true)
+        local _, selectionText = Ui.card(tab)
+        local pickerHolder = Instance.new("Frame")
+        pickerHolder.BackgroundTransparency = 1; pickerHolder.Size = UDim2.new(1, 0, 0, 0); pickerHolder.AutomaticSize = Enum.AutomaticSize.Y
+        pickerHolder.LayoutOrder = Ui.nextOrder(); pickerHolder.Parent = tab
+        Ui.stack(pickerHolder, 2)
+        Ui.label(tab, "TITLE", 15, true)
+        local titleField = Ui.field(tab, "Animation title", "")
+        Ui.label(tab, "CATEGORY", 15, true)
+        local setCategoryChoice = Ui.dropdown(tab, Config.CATEGORIES, state.category, function(value) state.category = value; Store.save("Category", value) end)
+        Ui.label(tab, "RIG TYPE", 15, true)
+        local setRigChoice = Ui.dropdown(tab, Config.RIGS, state.rig, function(value) state.rig = value; Store.save("Rig", value) end)
+        Ui.label(tab, "TAGS (comma separated)", 15, true)
+        local tagsField = Ui.field(tab, "moon-animator, studio", "moon-animator, studio")
+        local exportButton = Ui.button(tab, "UPLOAD SELECTED SAVE TO MOONHUB", true)
+        local resultCard, resultText = Ui.card(tab)
+        resultCard.Visible = false
+        local resultLink = Ui.field(tab, "", "")
+        resultLink.TextEditable = false; resultLink.Visible = false
+
+        local function renderPicker()
+            for _, child in ipairs(pickerHolder:GetChildren()) do
+                if child:IsA("GuiObject") then child:Destroy() end
+            end
+            if #candidates < 2 then return end
+            for index, entry in ipairs(candidates) do
+                local option = Ui.button(pickerHolder, entry.sequence.Name, false)
+                option.LayoutOrder = index
+                if entry == chosen then option.TextColor3 = Theme.ACCENT end
+                option.Activated:Connect(function() chosen = entry; titleField.Text = entry.sequence.Name; refresh() end)
+            end
+        end
+
+        refresh = function()
+            renderPicker()
+            exportButton.BackgroundTransparency = (chosen ~= nil and state.apiKey ~= "") and 0 or 0.6
+            setRigChoice(state.rig)
+            setCategoryChoice(state.category)
+            if #candidates == 0 then
+                selectionText.Text = #Selection:Get() == 0
+                    and "Nothing selected.\nSelect a KeyframeSequence or a folder holding saves."
+                    or '<font color="#f06e5a">No KeyframeSequence found in selection.</font>'
+                return
+            end
+            local keyframes, frames, poseCount = describe(chosen)
+            local lines = {"<b>" .. Ui.escapeRich(chosen.sequence.Name) .. "</b>", keyframes .. " keyframes · " .. frames .. " frames @60fps · " .. poseCount .. " poses"}
+            if keyframes == 0 or poseCount == 0 then
+                table.insert(lines, '<font color="#f06e5a">Save has no animated poses.</font>')
+            elseif #candidates > 1 then
+                table.insert(lines, "Pick one below (" .. #candidates .. " found).")
+            end
+            if state.apiKey == "" then table.insert(lines, '<font color="#f06e5a">Add API key in Settings.</font>') end
+            selectionText.Text = table.concat(lines, "\n")
+        end
+
+        local function onSelectionChanged()
+            local previous = chosen and chosen.sequence
+            candidates = {}
+            for _, item in ipairs(Selection:Get()) do
+                for _, sequence in ipairs(Sequence.findAll(item)) do
+                    table.insert(candidates, {sequence = sequence, root = item})
+                end
+            end
+            chosen = nil
+            for _, entry in ipairs(candidates) do
+                if entry.sequence == previous then chosen = entry end
+            end
+            if not chosen then
+                chosen = candidates[1]
+                if chosen then
+                    titleField.Text = chosen.sequence.Name
+                    local _, _, _, poses = describe(chosen)
+                    local rig = detectRig(poses)
+                    if rig then state.rig = rig end
+                end
+            end
+            refresh()
+        end
+        Selection.SelectionChanged:Connect(onSelectionChanged)
+        Store.subscribe(refresh)
+        onSelectionChanged()
+
+        local publishing = false
+        exportButton.Activated:Connect(function()
+            if publishing then return end
+            local key = state.apiKey
+            if key == "" then Shell.setStatus("Add API key in Settings. Create one at moonhub.dev/dashboard.", true); Shell.selectTab("Settings"); return end
+            if not chosen then Shell.setStatus("Select a KeyframeSequence or save folder first.", true); return end
+            local title = titleField.Text:match("^%s*(.-)%s*$")
+            if title == "" then Shell.setStatus("Title is empty.", true); return end
+            local entry = chosen
+            publishing = true
+            exportButton.Text = "UPLOADING…"
+            Shell.setStatus("Uploading " .. title .. "…", false)
+            task.spawn(function()
+                local ok, result = pcall(function()
+                    local payload, duration = Sequence.serialize(entry.sequence, entry.root, state.rig)
+                    return Api.upload(key, { title = title, category = state.category, rig_type = state.rig, duration_frames = math.max(duration, 1), fps = 60, payload_json = payload, tags = tagsField.Text })
+                end)
+                publishing = false
+                exportButton.Text = "UPLOAD SELECTED SAVE TO MOONHUB"
+                if ok then
+                    Shell.setStatus("Published " .. result.short_code, false)
+                    resultText.Text = "<b>Published " .. Ui.escapeRich(result.short_code) .. "</b>\nCopy the link below."
+                    resultLink.Text = tostring(result.url)
+                    resultCard.Visible = true; resultLink.Visible = true
+                else Shell.setStatus(tostring(result), true) end
+            end)
+        end)
+    end
+end
+
+definitions["tabs/Settings"] = function()
+    local Api = import("Api")
+    local Config = import("Config")
+    local Shell = import("Shell")
+    local Store = import("Store")
+    local Ui = import("Ui")
+
+    return function()
+        local state = Store.state
+        local tab = Shell.addTab("Settings", 3)
+
+        Ui.label(tab, "API KEY", 15, true)
+        local keyField = Ui.field(tab, "mh_live_…", "")
+        local keyShown = false
+        local function renderKey()
+            keyField.Text = keyShown and state.apiKey or string.rep("•", #state.apiKey)
+        end
+        renderKey()
+        keyField.Focused:Connect(function() keyField.Text = state.apiKey end)
+        keyField.FocusLost:Connect(function()
+            state.apiKey = (keyField.Text:gsub("%s", ""))
+            state.username = nil
+            Store.save("ApiKey", state.apiKey)
+            Shell.refreshKeyDot(); renderKey(); Store.notify()
+        end)
+        local showButton = Ui.button(tab, "SHOW KEY", false)
+        showButton.Activated:Connect(function()
+            keyShown = not keyShown
+            showButton.Text = keyShown and "HIDE KEY" or "SHOW KEY"
+            renderKey()
+        end)
+        local validateButton = Ui.button(tab, "VALIDATE KEY", false)
+        validateButton.Activated:Connect(function()
+            local key = state.apiKey
+            if key == "" then Shell.setStatus("Add API key first.", true); return end
+            Shell.setStatus("Validating…", false)
+            task.spawn(function()
+                local ok, username = pcall(Api.me, key)
+                if not ok then
+                    Shell.setStatus(tostring(username):find("not enabled") and "HTTP blocked. Enable in Game Settings → Security." or tostring(username), true)
+                elseif not username then
+                    state.username = nil; Shell.refreshKeyDot(); Shell.setStatus("Key invalid or revoked.", true)
+                else
+                    state.username = username; Shell.refreshKeyDot()
+                    Shell.setStatus("Key valid. Signed in as " .. username .. ".", false)
+                end
+            end)
+        end)
+        Ui.label(tab, "Create keys at " .. Config.SITE_URL .. "/dashboard", 18, true)
+
+        Ui.label(tab, "CONNECTION", 15, true)
+        local httpButton = Ui.button(tab, "CHECK HTTP ACCESS", false)
+        httpButton.Activated:Connect(function()
+            Shell.setStatus("Checking…", false)
+            task.spawn(function()
+                local ok, status = pcall(Api.ping)
+                if not ok then Shell.setStatus("HTTP blocked. Enable in Game Settings → Security.", true)
+                elseif status >= 400 then Shell.setStatus("MoonHub returned " .. tostring(status) .. ".", true)
+                else Shell.setStatus("HTTP enabled. MoonHub reachable.", false) end
+            end)
+        end)
+
+        Ui.label(tab, "PREFERENCES", 15, true)
+        local resetButton = Ui.button(tab, "RESET SAVED SETTINGS", false)
+        resetButton.Activated:Connect(function()
+            for _, name in ipairs({"ApiKey", "Category", "Rig"}) do Store.save(name, nil) end
+            state.apiKey, state.category, state.rig, state.username = "", "Locomotion", "R15", nil
+            keyShown = false; showButton.Text = "SHOW KEY"; renderKey(); Shell.refreshKeyDot(); Store.notify()
+            Shell.setStatus("Saved settings cleared.", false)
+        end)
+        Ui.label(tab, "Docs: " .. Config.DOCS_URL, 34, true)
+    end
+end
+
+import("init")
