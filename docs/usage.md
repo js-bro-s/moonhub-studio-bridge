@@ -10,7 +10,7 @@ permalink: /usage/
 2. Open **Plugins → MoonHub**. The **Browse** tab loads recent public animations.
 3. Type a title, `MH-####` code, or tag in **Search**. Results update after you stop typing.
 4. Pick a category chip to narrow results. Select **Load more** to page further.
-5. Select a result to see its description and tags. Select **Import to ServerStorage**. Plugin fetches full keyframe data and adds an editable sequence under `ServerStorage.MoonAnimator2Saves`.
+5. Each result is one compact line. Select it to open its details underneath: category, frames, author, description, tags, and the share link. Select **Use in Studio**. Plugin fetches full keyframe data and adds an editable sequence under `ServerStorage.MoonAnimator2Saves`. Select the line again to close it; only one result stays open at a time.
 
 Browsing and importing public animations need no API key. You can also type a short code such as `MH-8492` under **Import by short code**.
 
